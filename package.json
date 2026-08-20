@@ -1,0 +1,12 @@
+{
+  "name": "load-balancing-demo",
+  "version": "1.0.0",
+  "description": "Educational demo: NGINX load balancer with Node.js/Express (Phase 1: single Express server)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
