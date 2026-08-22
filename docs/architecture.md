@@ -1,50 +1,91 @@
-# Architecture So Far (Phases 1-8)
+# Architecture — Final (Phases 1-10)
 
-Current state: NGINX acts as a **load balancer** distributing traffic across three backend instances using **round-robin**, with full request logging.
+## Overview
+
+NGINX acts as a **load balancer** distributing traffic across three Node.js/Express instances using **round-robin**.
 
 ```text
-                 NGINX
-                   |
-        +----------+----------+
-        |          |          |
-        v          v          v
-      api-1      api-2      api-3
+                         Client
+                           |
+                           | HTTP :80
+                           v
+                    +-------------+
+                    |    NGINX    |
+                    | Reverse     |
+                    | Proxy / LB  |
+                    +------+------+
+                           |
+                 Docker Network
+                           |
+            +--------------+--------------+
+            |              |              |
+            v              v              v
+       +---------+    +---------+    +---------+
+       |  api-1  |    |  api-2  |    |  api-3  |
+       | Express |    | Express |    | Express |
+       |  :3000  |    |  :3000  |    |  :3000  |
+       +---------+    +---------+    +---------+
 ```
 
-## What exists today
+## Components
 
-| Component | Details |
-| --- | --- |
-| Express app | `app.js` + `server.js` — `GET /` identifies the instance, `GET /health`, request logging `[api-1] GET / 200`. Port and instance ID come from env vars. |
-| Docker image | `Dockerfile` (node:20-alpine). One image, reused by all instances. |
-| 3 backend containers | `api-1`, `api-2`, `api-3` in `docker-compose.yml`, identical except `INSTANCE_ID`. Published on host ports 3001/3002/3003 for direct access. |
-| Docker network | `backend` (bridge). Containers reach each other by service name (`api-2:3000`), never `localhost`. See `docs/networking.md`. |
-| NGINX | `nginx/nginx.conf` published on port 80. Uses `upstream backend` block with round-robin distribution. Custom access log shows which upstream served each request. |
-| Config values | `.env` (read by docker compose): `IMAGE_NAME`, `NGINX_PORT`, `HOST_PORT_1/2/3`. |
+### Express Application (`app.js`, `server.js`)
+
+- `GET /` — returns instance ID, hostname, and message
+- `GET /health` — returns status OK
+- Request logging: `[api-1] GET / 200`
+- Port and instance ID configurable via environment variables
+
+### Docker Image (`Dockerfile`)
+
+- Node.js 20 Alpine base
+- One image, reused by all instances
+- Instances differ only by `INSTANCE_ID` env var
+
+### Docker Compose (`docker-compose.yml`)
+
+- Three backend services: `api-1`, `api-2`, `api-3`
+- One NGINX service
+- Custom bridge network `backend`
+- Backend ports exposed for direct access (3001/3002/3003)
+
+### NGINX (`nginx/nginx.conf`)
+
+- Listens on port 80
+- `upstream backend` block with three servers
+- Round-robin distribution (default)
+- Custom access log showing upstream address
 
 ## Logging
 
-- **App logs:** `[api-1] GET / 200` — which instance handled the request
-- **NGINX logs:** `172.18.0.1 - [172.18.0.2:3000] GET / 200` — which upstream IP served the request
-- See `docs/logging.md` for viewing and filtering logs
+| Source | Format | Example |
+| --- | --- | --- |
+| App | `[instance] METHOD PATH STATUS` | `[api-1] GET / 200` |
+| NGINX | `addr - [upstream] request status` | `172.18.0.1 - [172.18.0.2:3000] GET / 200` |
 
-## Key concepts demonstrated so far
+## Key Concepts
 
-- **One image, many instances** — containers differ only by `INSTANCE_ID`.
-- **Service DNS** — `api-1:3000` inside the network, not `localhost`.
-- **Reverse proxy** — clients reach one endpoint (`localhost`), NGINX forwards to the backend; the backend is invisible to clients.
-- **Load balancer** — NGINX distributes traffic across all instances using default round-robin.
-- **Round-robin** — each request goes to the next backend in sequence (api-1, api-2, api-3, api-1, ...).
-- **Observability** — logs make the traffic distribution visible and debuggable.
+| Concept | What it means |
+| --- | --- |
+| Reverse proxy | NGINX sits between clients and backends |
+| Load balancer | NGINX distributes traffic across instances |
+| Round-robin | Each request goes to the next backend in sequence |
+| Service DNS | Containers reach each other by name (`api-1:3000`) |
+| Passive failure detection | NGINX discovers failures when they happen |
+| Horizontal scaling | One app, multiple instances |
 
-## Testing
+## Directories
 
-k6 load testing scripts are in `k6/`:
+| Directory | Purpose |
+| --- | --- |
+| `nginx/` | NGINX configuration |
+| `k6/` | Load testing scripts |
+| `docs/` | Architecture and learning docs |
 
-```bash
-k6 run k6/distribution-test.js
-```
+## See also
 
-## Coming next
-
-Phase 9 will simulate a backend failure and observe what happens.
+- `docs/networking.md` — Docker networking
+- `docs/round-robin.md` — Round-robin explanation
+- `docs/logging.md` — Log viewing and filtering
+- `docs/failure-experiment.md` — Backend failure experiment
+- `docs/direct-vs-lb.md` — Direct vs load-balanced access
